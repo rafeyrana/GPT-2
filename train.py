@@ -2,17 +2,18 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import math
 
 class SelfAttention(nn.Module):
      def __init__(self, config):
           super().__init__()
-          assert config.n_embedding % config.n_heads == 0
-          self.n_heads = config.n_heads
+          assert config.n_embedding % config.n_head == 0
+          self.n_heads = config.n_head
           self.n_embedding = config.n_embedding
           # K, Q, V projections for all heads
           self.c_attention = nn.Linear(config.n_embedding, 3 *config.n_embedding)
           self.c_projection = nn.Linear(config.n_embedding, config.n_embedding)
-          self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size)).view(1,1, config.block_size, config.block_size()))
+          self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size)).view(1,1, config.block_size, config.block_size))
 
         # register buffer is a way to store a tensor in the model. It is not a parameter of the model. It is a buffer. It is not trained. It is used for storing things like biases, running averages, etc.
 
@@ -43,7 +44,7 @@ class MLP(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.linear_1 = nn.Linear(config.n_embedding, 4 * config.n_embedding)
-        self.gelu = nn.GELU(appreoximate="tanh") # the approximate version of tanh is used. Gelu is sort of like a tanh but instead of 0 at 0 it has a sort of curve at 0 to counter the dead neuron RELU problem. 
+        self.gelu = nn.GELU(approximate="tanh") # the approximate version of tanh is used. Gelu is sort of like a tanh but instead of 0 at 0 it has a sort of curve at 0 to counter the dead neuron RELU problem. 
         self.linear_2 = nn.Linear(4 * config.n_embedding, config.n_embedding)
 
 
@@ -119,18 +120,38 @@ elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
 
 print("Using device: ", device)
 
-num_return_sequences = 5
-max_length = 30
+
+
+import tiktoken
+enc = tiktoken.get_encoding("gpt2")
+print(f'loading file input.txt')
+with open("input.txt","r") as f:
+    text = f.read()
+text = text[:1000]
+tokens = enc.encode(text)
+B, T = 4,32
+buf = torch.Tensor(tokens[:B*T + 1])
+x = buf[:-1].view(B,T).to(device).long()
+y = buf[1:].view(B,T).to(device).long()
+
+
+
+
+# num_return_sequences = 5
+# max_length = 30
+print(f'Initialising the model')
 model = GPT(ModelConf())
 model.eval()
 model.to(device)
 
-import tiktoken
-enc = tiktoken.get_encoding("gpt2")
-tokens = enc.encode("hi i am a language model ")
-tokens = torch.tensor(tokens, dtype = torch.long)
-tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1)
-x = tokens.to(device)
+logits = model(x)
+print(f'this is the shape of the logits : {logits.shape}')
+
+
+# tokens = enc.encode("hi i am a language model ")
+# tokens = torch.tensor(tokens, dtype = torch.long)
+# tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1)
+# x = tokens.to(device)
 
 
 torch.manual_seed(0)
