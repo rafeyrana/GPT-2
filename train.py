@@ -70,14 +70,14 @@ class Block(nn.Module):
 
 @dataclass
 class ModelConf:
-    block_size : int = 256
+    block_size : int = 256 # max sequence length 
     vocab_size : int = 65
     n_layer : int = 6
     n_head : int = 6
     n_embedding : int = 384
 
 
-class Model(nn.Module):
+class GPT(nn.Module):
 
     def __init__(self, config):
         super().__init__()
@@ -91,3 +91,47 @@ class Model(nn.Module):
             layer_normalisation = nn.LayerNorm(config.n_embedding),
         ))
         self.linear_head = nn.Linear(config.n_embedding, config.vocab_size, bias = False)
+
+    def forward(self, idx):
+         batch_size, seq_length = idx.size()
+         assert seq_length <= self.config.block_size, "Cannot forward, model context length is over."
+         pos = torch.arange(0, seq_length, dtype=torch.long, device=idx.device)
+         pos_embedding = self.transformer.position_embeddings(pos) 
+         tok_embedding = self.transformer.token_embeddings(idx)
+         x = tok_embedding + pos_embedding # broadcasting
+         for block in self.transformer.hidden:
+              x = block(x)
+         x = self.transformer.layer_normalisation(x)
+         logits = self.linear_head(x) # the logits contain the prob and then we can softmax onto this to get the output tokens
+         return logits
+
+
+
+
+
+
+
+device = "cpu"
+if torch.cuda.is_available():
+    device = "cuda"
+elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+    device = "mps"
+
+print("Using device: ", device)
+
+num_return_sequences = 5
+max_length = 30
+model = GPT(ModelConf())
+model.eval()
+model.to(device)
+
+import tiktoken
+enc = tiktoken.get_encoding("gpt2")
+tokens = enc.encode("hi i am a language model ")
+tokens = torch.tensor(tokens, dtype = torch.long)
+tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1)
+x = tokens.to(device)
+
+
+torch.manual_seed(0)
+torch.cuda.manual_seed(0)
