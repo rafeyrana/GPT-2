@@ -95,6 +95,9 @@ class GPT(nn.Module):
         ))
         self.linear_head = nn.Linear(config.n_embedding, config.vocab_size, bias = False)
 
+        # weight sharing scheme by keeping the input embedding matrix and the output matrix before the softmax layer. the intuition behind this is to share the context of similary context tokens as this is a recursive scheme.
+        self.transformer.token_embeddings.weight = self.linear_head.weight # single tensor being used in the forward pass
+
     def forward(self, idx, targets= None):
          batch_size, seq_length = idx.size()
          assert seq_length <= self.config.block_size, "Cannot forward, model context length is over."
@@ -131,10 +134,11 @@ class DataLoader:
 
     def get_batch(self):
         buf = self.tokens[self.current_position: self.current_position + self.B * self.T + 1]
-        x = (buf[:-1]).view(self.B * self.T)
-        y = (buf[1:]).view(self.B * self.T)
+        x = (buf[:-1]).view(self.B , self.T)
+        y = (buf[1:]).view(self.B , self.T)
         self.current_position += self.B * self.T
         # check for out of bounds error
+
         if self.current_position + self.B * self.T + 1 > len(self.tokens):
             self.current_position = 0
 
@@ -156,21 +160,7 @@ elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
 
 print("Using device: ", device)
 
-
-
-enc = tiktoken.get_encoding("gpt2")
-print(f'loading file input.txt')
-with open("input.txt","r") as f:
-    text = f.read()
-text = text[:1000]
-tokens = enc.encode(text)
-B, T = 4,32
-buf = torch.Tensor(tokens[:B*T + 1])
-x = buf[:-1].view(B,T).to(device).long()
-y = buf[1:].view(B,T).to(device).long()
-
-print("Tokenisation Complete")
-
+train_loader = DataLoader(B = 4, T = 32)
 
 
 
@@ -188,6 +178,8 @@ optimizer = torch.optim.AdamW(model.parameters(), lr = 3e-4) # bug fix of Adam i
 
 for i in range(steps):
     optimizer.zero_grad()
+    x , y = train_loader.get_batch()
+    x, y = x.to(device) , y.to(device)
     loss, logits = model(x, y)
     loss.backward()
     optimizer.step()
