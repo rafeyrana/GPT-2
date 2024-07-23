@@ -72,7 +72,7 @@ class Block(nn.Module):
 @dataclass
 class ModelConf:
     block_size : int = 256 # max sequence length 
-    vocab_size : int = 65
+    vocab_size : int = 50257
     n_layer : int = 6
     n_head : int = 6
     n_embedding : int = 384
@@ -93,7 +93,7 @@ class GPT(nn.Module):
         ))
         self.linear_head = nn.Linear(config.n_embedding, config.vocab_size, bias = False)
 
-    def forward(self, idx):
+    def forward(self, idx, targets= None):
          batch_size, seq_length = idx.size()
          assert seq_length <= self.config.block_size, "Cannot forward, model context length is over."
          pos = torch.arange(0, seq_length, dtype=torch.long, device=idx.device)
@@ -104,7 +104,11 @@ class GPT(nn.Module):
               x = block(x)
          x = self.transformer.layer_normalisation(x)
          logits = self.linear_head(x) # the logits contain the prob and then we can softmax onto this to get the output tokens
-         return logits
+         loss = None
+         if targets is not None:
+              loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+              
+         return loss, logits
 
 
 
@@ -137,6 +141,8 @@ y = buf[1:].view(B,T).to(device).long()
 
 
 
+
+
 # num_return_sequences = 5
 # max_length = 30
 print(f'Initialising the model')
@@ -144,8 +150,23 @@ model = GPT(ModelConf())
 model.eval()
 model.to(device)
 
-logits = model(x)
+# loss, logits = model(x, y) 
+
+steps = 50
+optimizer = torch.optim.AdamW(model.parameters(), lr = 3e-4) # bug fix of Adam is AdamW but this more complicated than the SGD because it keeps the momentum and optimises faster
+
+for i in range(steps):
+    optimizer.zero_grad()
+    loss, logits = model(x, y)
+    loss.backward()
+    optimizer.step()
+    print(f"Step {i} Loss {loss.item()}")
+
+
+
+
 print(f'this is the shape of the logits : {logits.shape}')
+print(loss)
 
 
 # tokens = enc.encode("hi i am a language model ")
