@@ -3,6 +3,8 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import math
+import tiktoken
+
 
 class SelfAttention(nn.Module):
      def __init__(self, config):
@@ -112,7 +114,37 @@ class GPT(nn.Module):
 
 
 
+class DataLoader:
+    def __init__(self, B, T):
+        self.B = B
+        self.T = T
+        enc = tiktoken.get_encoding("gpt2")
+        with open("input.txt","r") as f:
+            text = f.read()
 
+        tokens = enc.encode(text)
+        self.tokens = torch.tensor(tokens, dtype = torch.long)
+        print(f'loaded {len(self.tokens)} tokens')
+        print(f'1 epoch = {len(self.tokens) // (B * T)} batches')
+
+        self.current_position = 0 
+
+    def get_batch(self):
+        buf = self.tokens[self.current_position: self.current_position + self.B * self.T + 1]
+        x = (buf[:-1]).view(self.B * self.T)
+        y = (buf[1:]).view(self.B * self.T)
+        self.current_position += self.B * self.T
+        # check for out of bounds error
+        if self.current_position + self.B * self.T + 1 > len(self.tokens):
+            self.current_position = 0
+
+        return x , y
+
+
+        
+        
+
+          
 
 
 
@@ -126,7 +158,6 @@ print("Using device: ", device)
 
 
 
-import tiktoken
 enc = tiktoken.get_encoding("gpt2")
 print(f'loading file input.txt')
 with open("input.txt","r") as f:
@@ -138,7 +169,7 @@ buf = torch.Tensor(tokens[:B*T + 1])
 x = buf[:-1].view(B,T).to(device).long()
 y = buf[1:].view(B,T).to(device).long()
 
-
+print("Tokenisation Complete")
 
 
 
