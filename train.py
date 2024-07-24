@@ -15,6 +15,7 @@ class SelfAttention(nn.Module):
           # K, Q, V projections for all heads
           self.c_attention = nn.Linear(config.n_embedding, 3 *config.n_embedding)
           self.c_projection = nn.Linear(config.n_embedding, config.n_embedding)
+          self.c_projection.GPT2_SCALE_INIT = 1.0
           self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size)).view(1,1, config.block_size, config.block_size))
 
         # register buffer is a way to store a tensor in the model. It is not a parameter of the model. It is a buffer. It is not trained. It is used for storing things like biases, running averages, etc.
@@ -48,6 +49,7 @@ class MLP(nn.Module):
         self.linear_1 = nn.Linear(config.n_embedding, 4 * config.n_embedding)
         self.gelu = nn.GELU(approximate="tanh") # the approximate version of tanh is used. Gelu is sort of like a tanh but instead of 0 at 0 it has a sort of curve at 0 to counter the dead neuron RELU problem. 
         self.linear_2 = nn.Linear(4 * config.n_embedding, config.n_embedding)
+        self.linear_2.GPT2_SCALE_INIT = 1.0
 
 
     def forward(self, x):
@@ -103,7 +105,10 @@ class GPT(nn.Module):
         self.apply(self._init_weights)
 
     def _init_weights(self, module):
-        if isinstance(module, nn.Module):
+        if isinstance(module, nn.Linear):
+            std = 0.02
+            if hasattr(module, "GPT2_SCALE_INIT"):
+                std *= (2 * self.config.n_layer) ** - 0.5
             torch.nn.init.normal_(module.weight , mean = 0.0, std = 0.02)
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
@@ -173,6 +178,13 @@ elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
     device = "mps"
 
 print("Using device: ", device)
+
+# for resulability
+torch.manual_seed(1337)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(1337)
+
+
 
 train_loader = DataLoader(B = 4, T = 32)
 
