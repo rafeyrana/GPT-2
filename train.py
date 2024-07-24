@@ -97,6 +97,20 @@ class GPT(nn.Module):
 
         # weight sharing scheme by keeping the input embedding matrix and the output matrix before the softmax layer. the intuition behind this is to share the context of similary context tokens as this is a recursive scheme.
         self.transformer.token_embeddings.weight = self.linear_head.weight # single tensor being used in the forward pass
+        # if we take into consideration the amount of weight sharing this is the shape of (768,50257) which is 40 million params out of the total 124 mkaing this whole parameter sharing scheme on approx 30% of the whole model.
+        # this makes training efficient
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Module):
+            torch.nn.init.normal_(module.weight , mean = 0.0, std = 0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight , mean = 0.0, std = 0.02)
+        # 0.02 because it roughly evenly initialises the model
+        # dont have to change the layernorm initialisation
 
     def forward(self, idx, targets= None):
          batch_size, seq_length = idx.size()
