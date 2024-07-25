@@ -5,7 +5,7 @@ from torch.nn import functional as F
 import math
 import tiktoken
 
-
+import time 
 class SelfAttention(nn.Module):
      def __init__(self, config):
           super().__init__()
@@ -187,7 +187,7 @@ if torch.cuda.is_available():
 
 
 train_loader = DataLoader(B = 4, T = 32)
-
+# 4, 1024 was working with 10 seconds per step
 
 
 # num_return_sequences = 5
@@ -203,13 +203,23 @@ steps = 50
 optimizer = torch.optim.AdamW(model.parameters(), lr = 3e-4) # bug fix of Adam is AdamW but this more complicated than the SGD because it keeps the momentum and optimises faster
 
 for i in range(steps):
+    t0 = time.time()
     optimizer.zero_grad()
     x , y = train_loader.get_batch()
     x, y = x.to(device) , y.to(device)
     loss, logits = model(x, y)
+
+
+    # import code ; code.interact(local = locals())
+
+
     loss.backward()
     optimizer.step()
-    print(f"Step {i} Loss {loss.item()}")
+    torch.mps.synchronize()
+    t1 = time.time()
+    dt = (t1-t0) * 1000
+    tokens_per_second = (train_loader.B * train_loader.T) / dt
+    print(f"Step {i} Loss {loss.item()}, time : {dt:.2f}ms , tokens/s: {tokens_per_second}")
 
 
 
@@ -224,5 +234,5 @@ print(loss)
 # x = tokens.to(device)
 
 
-torch.manual_seed(0)
-torch.cuda.manual_seed(0)
+# torch.manual_seed(0)
+# torch.cuda.manual_seed(0)
