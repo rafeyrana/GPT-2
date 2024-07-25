@@ -75,7 +75,7 @@ class Block(nn.Module):
 
 @dataclass
 class ModelConf:
-    block_size : int = 256 # max sequence length 
+    block_size : int = 256 # max sequence length usually 1024 in the model
     vocab_size : int = 50257
     n_layer : int = 6
     n_head : int = 6
@@ -188,6 +188,10 @@ if torch.cuda.is_available():
 
 train_loader = DataLoader(B = 4, T = 32)
 # 4, 1024 was working with 10 seconds per step
+torch.set_float32_matmul_precision("high") # tensor float 32 TF32
+
+
+# automated mixed precision for faster training and reducing the precision of the tensor representation
 
 
 # num_return_sequences = 5
@@ -207,6 +211,8 @@ for i in range(steps):
     optimizer.zero_grad()
     x , y = train_loader.get_batch()
     x, y = x.to(device) , y.to(device)
+    # with torch.autocast(device_type = device, dtype = torch.bfloat16): # turn this on for cuda not suppported on mps 
+    #     loss, logits = model(x, y)
     loss, logits = model(x, y)
 
 
@@ -218,7 +224,7 @@ for i in range(steps):
     torch.mps.synchronize()
     t1 = time.time()
     dt = (t1-t0) * 1000
-    tokens_per_second = (train_loader.B * train_loader.T) / dt
+    tokens_per_second = (train_loader.B * train_loader.T) / (t1-t0)
     print(f"Step {i} Loss {loss.item()}, time : {dt:.2f}ms , tokens/s: {tokens_per_second}")
 
 
