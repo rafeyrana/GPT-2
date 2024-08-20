@@ -34,7 +34,7 @@ torch._dynamo.config.suppress_errors = True
 # num_return_sequences = 5
 # max_length = 30
 print(f'Initialising the model')
-model = GPT(ModelConf())
+model = GPT(ModelConf(vocab_size = 50304)) # making it a nicer power of 2 so we can optimise gpu space block tiles
 model.eval()
 model.to(device)
 model = torch.compile(model)
