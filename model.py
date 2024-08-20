@@ -29,15 +29,24 @@ class SelfAttention(nn.Module):
           k = k.view(batch_size, seq_length, self.n_heads, embedding_dim // self.n_heads).transpose(1, 2)
           q = q.view(batch_size, seq_length, self.n_heads, embedding_dim // self.n_heads).transpose(1, 2)
           v = v.view(batch_size, seq_length, self.n_heads, embedding_dim // self.n_heads).transpose(1, 2)
-          attention = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-          # masking the future tokens in training on the triangular matrix to -inf out the future tokens and only pay attention to previous context
-          attention = attention.masked_fill(self.bias[:,:,:seq_length, :seq_length] == 0, float('-inf'))
-          attention = F.softmax(attention, dim=-1) # normalising to 1
-          y = attention @ v
+
+          ## this is the traditional way of implementing self attention as in the original paper.
+          #attention = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+          ## masking the future tokens in training on the triangular matrix to -inf out the future tokens and only pay attention to previous context
+          #attention = attention.masked_fill(self.bias[:,:,:seq_length, :seq_length] == 0, float('-inf'))
+          #attention = F.softmax(attention, dim=-1) # normalising to 1
+          #y = attention @ v
+
+          y = F.scaled_dot_product_attention(q, k ,v,is_causal= True) # Flash attention
+
+
+          # We will be making an optimisation on the way we calculate self attention by implementing Flash Attention as proposed in the paper : Flash Attention: FAst ANd Memory Efficient Exact Attneion with IO-Awareness
+          # this is the kernel fusion algorithm which is 7.6% faster.
+
           y = y.transpose(1, 2).contiguous().view(batch_size, seq_length, embedding_dim) # reassembling the heads output / concatenation tbh
           # projecting output
           y = self.c_projection(y)
-          return y 
+          return y
 
 
 
