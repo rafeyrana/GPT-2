@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 import math
 import tiktoken
-
+import inspect
 
 
 
@@ -65,18 +65,18 @@ def learning_rate_scheduler(i):
 
 
 
-optimizer = torch.optim.AdamW(model.parameters(), lr = 3e-4, betas = (0.9, 0.95), eps = 1e-8) # bug fix of Adam is AdamW but this more complicated than the SGD because it keeps the momentum and optimises faster
-
+# optimizer = torch.optim.AdamW(model.parameters(), lr = 3e-4, betas = (0.9, 0.95), eps = 1e-8) # bug fix of Adam is AdamW but this more complicated than the SGD because it keeps the momentum and optimises faster
+optimizer = model.configure_optimizers(weight_decay = 0.1, learning_rate = 6e-4, device_type = device)
 for step in range(max_steps):
     t0 = time.time()
     optimizer.zero_grad()
     x , y = train_loader.get_batch()
     x, y = x.to(device) , y.to(device)
-    with torch.autocast(device_type = device, dtype = torch.bfloat16): # turn this on for cuda not suppported on mps
-        loss, logits = model(x, y)
+    # with torch.autocast(device_type = device, dtype = torch.bfloat16): # turn this on for cuda not suppported on mps
+    #     loss, logits = model(x, y)
       # the 2 lines above cause this warning: WON'T CONVERT forward <ipython-input-3-e1e81a0fd956> line 112  due to: Traceback (most recent call last):File "/usr/local/lib/python3.10/dist-packages/torch/_dynamo/convert_frame.py", line 786, in _convert_frame
       # use the simple one for it to be reomved but it trains anyway 
-    # loss, logits = model(x, y)
+    loss, logits = model(x, y)
 
 
     # import code ; code.interact(local = locals())
