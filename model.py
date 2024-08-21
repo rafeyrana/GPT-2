@@ -7,13 +7,14 @@ import tiktoken
 
 import time 
 class SelfAttention(nn.Module):
+     
      def __init__(self, config):
           super().__init__()
           assert config.n_embedding % config.n_head == 0
           self.n_heads = config.n_head
           self.n_embedding = config.n_embedding
           # K, Q, V projections for all heads
-          self.c_attention = nn.Linear(config.n_embedding, 3 *config.n_embedding)
+          self.c_attention = nn.Linear(config.n_embedding, 3 * config.n_embedding)
           self.c_projection = nn.Linear(config.n_embedding, config.n_embedding)
           self.c_projection.GPT2_SCALE_INIT = 1.0
           self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size)).view(1,1, config.block_size, config.block_size))
@@ -39,11 +40,10 @@ class SelfAttention(nn.Module):
 
           y = F.scaled_dot_product_attention(q, k ,v,is_causal= True) # Flash attention
 
-
           # We will be making an optimisation on the way we calculate self attention by implementing Flash Attention as proposed in the paper : Flash Attention: FAst ANd Memory Efficient Exact Attneion with IO-Awareness
           # this is the kernel fusion algorithm which is 7.6% faster.
-
           y = y.transpose(1, 2).contiguous().view(batch_size, seq_length, embedding_dim) # reassembling the heads output / concatenation tbh
+
           # projecting output
           y = self.c_projection(y)
           return y
@@ -56,7 +56,7 @@ class MLP(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.linear_1 = nn.Linear(config.n_embedding, 4 * config.n_embedding)
-        self.gelu = nn.GELU(approximate="tanh") # the approximate version of tanh is used. Gelu is sort of like a tanh but instead of 0 at 0 it has a sort of curve at 0 to counter the dead neuron RELU problem. 
+        self.gelu = nn.GELU(approximate="tanh") # the approximate version of tanh is used. Gelu is sort of like a tanh but instead of 0 at 0 it has a sort of curve at 0 to counter the dead neuron RELU problem.
         self.linear_2 = nn.Linear(4 * config.n_embedding, config.n_embedding)
         self.linear_2.GPT2_SCALE_INIT = 1.0
 
@@ -96,7 +96,7 @@ class GPT(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        
+
 
         self.transformer = nn.ModuleDict(dict(
             token_embeddings = nn.Embedding(config.vocab_size, config.n_embedding),
@@ -130,7 +130,7 @@ class GPT(nn.Module):
          batch_size, seq_length = idx.size()
          assert seq_length <= self.config.block_size, "Cannot forward, model context length is over."
          pos = torch.arange(0, seq_length, dtype=torch.long, device=idx.device)
-         pos_embedding = self.transformer.position_embeddings(pos) 
+         pos_embedding = self.transformer.position_embeddings(pos)
          tok_embedding = self.transformer.token_embeddings(idx)
          x = tok_embedding + pos_embedding # broadcasting
          for block in self.transformer.hidden:
@@ -140,7 +140,7 @@ class GPT(nn.Module):
          loss = None
          if targets is not None:
               loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
-              
+
          return loss, logits
 
 
@@ -158,7 +158,7 @@ class DataLoader:
         print(f'loaded {len(self.tokens)} tokens')
         print(f'1 epoch = {len(self.tokens) // (B * T)} batches')
 
-        self.current_position = 0 
+        self.current_position = 0
 
     def get_batch(self):
         buf = self.tokens[self.current_position: self.current_position + self.B * self.T + 1]
@@ -173,5 +173,7 @@ class DataLoader:
         return x , y
 
 
-        
-        
+
+
+
+
