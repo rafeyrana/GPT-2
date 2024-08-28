@@ -10,6 +10,9 @@ import inspect
 
 
 
+
+
+
 device = "cpu"
 if torch.cuda.is_available():
     device = "cuda"
@@ -23,6 +26,8 @@ torch.manual_seed(1337)
 if torch.cuda.is_available():
     torch.cuda.manual_seed(1337)
 
+
+# could have added the 0.5M total_batchsize to replicate the paper but we dont have enough hardware to implement gradient accumulation by using microbatches and not update the gradient just add them and keep for after all microbatches done
 
 
 train_loader = DataLoader(B = 4, T = 32)
@@ -72,11 +77,11 @@ for step in range(max_steps):
     optimizer.zero_grad()
     x , y = train_loader.get_batch()
     x, y = x.to(device) , y.to(device)
-    # with torch.autocast(device_type = device, dtype = torch.bfloat16): # turn this on for cuda not suppported on mps
-    #     loss, logits = model(x, y)
+    with torch.autocast(device_type = device, dtype = torch.bfloat16): # turn this on for cuda not suppported on mps
+        loss, logits = model(x, y)
       # the 2 lines above cause this warning: WON'T CONVERT forward <ipython-input-3-e1e81a0fd956> line 112  due to: Traceback (most recent call last):File "/usr/local/lib/python3.10/dist-packages/torch/_dynamo/convert_frame.py", line 786, in _convert_frame
       # use the simple one for it to be reomved but it trains anyway 
-    loss, logits = model(x, y)
+    # loss, logits = model(x, y)
 
 
     # import code ; code.interact(local = locals())
