@@ -36,4 +36,4 @@ Note: This implementation is for educational purposes only and may not achieve t
 ## Future Work and Improvements
 - Add detailed Evaluation Metrics.
 - Train on a larger dataset with more compute.
-- Distribute Training.
+- Distributed Training.
