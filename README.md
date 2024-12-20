@@ -20,20 +20,13 @@ The model uses a fused AdamW optimizer, which is a kernel fusion algorithm that 
 The model uses gradient accumulation to update the gradients in batches, which reduces the memory usage and speeds up training.
 
 ### Learning Rate Scheduler
-The model uses a learning rate scheduler that warms up the learning rate from 0 to a maximum value, and then decays it to a minimum value.
+The model uses a Cosine learning rate scheduler that warms up the learning rate from 0 to a maximum value, and then decays it to a minimum value.
 
-### Model Configuration
-The model configuration is defined in the `ModelConf` dataclass, which includes the block size, vocabulary size, number of layers, number of heads, and embedding dimension.
-
-### Device and Precision
-The model is trained on a GPU device with a precision of `torch.bfloat16`, which reduces the memory usage and speeds up training.
-
-## Results
-The model is trained for 50 steps, and the loss and logits are printed at each step. The final loss and logits are also printed at the end of the training loop.
+### Distributed Training
+The model is trained using microbatch and DDP techniques on 8 GPUs in parallel with loss sync.
 
 Note: This implementation is for educational purposes only and may not achieve the same performance as the original GPT-2 model.
 
 ## Future Work and Improvements
+- Train on a larger dataset with more compute. (Dataset we can use is the LLM cleaned [Huggingface Fineweb 10B Token](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu) but i dont have the compute to train it :(  )
 - Add detailed Evaluation Metrics.
-- Train on a larger dataset with more compute.
-- Distributed Training.
