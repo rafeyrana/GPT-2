@@ -5,7 +5,23 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import math
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.distributed as dist
 from torch.distributed import init_process_group, destroy_process_group
+
+# we are going to implement cosine decay with warmup
+
+def learning_rate_scheduler(i):
+  if i < warmup_steps:
+    return max_lr * (i+1) / warmup_steps
+  if i > max_steps:
+    return min_lr
+  decay_ratio = (i - warmup_steps) / (max_steps - warmup_steps)
+  assert 0 <= decay_ratio <= 1
+  coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
+  return min_lr + coeff * (max_lr - min_lr)
+
+
 
 
 
@@ -71,28 +87,16 @@ model.eval()
 model.to(device)
 model = torch.compile(model)
 
+if ddp:
+   model = DDP(model, device_ids = [ddp_local_rank]) 
+
+
+
 # loss, logits = model(x, y)
 max_lr = 3e-4
 min_lr = max_lr * 0.1
 warmup_steps = 10
 max_steps = 50
-
-
-# we are going to implement cosine decay with warmup
-
-def learning_rate_scheduler(i):
-  if i < warmup_steps:
-    return max_lr * (i+1) / warmup_steps
-  if i > max_steps:
-    return min_lr
-  decay_ratio = (i - warmup_steps) / (max_steps - warmup_steps)
-  assert 0 <= decay_ratio <= 1
-  coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
-  return min_lr + coeff * (max_lr - min_lr)
-
-
-
-
 
 
 # optimizer = torch.optim.AdamW(model.parameters(), lr = 3e-4, betas = (0.9, 0.95), eps = 1e-8) # bug fix of Adam is AdamW but this more complicated than the SGD because it keeps the momentum and optimises faster
@@ -112,7 +116,18 @@ for step in range(max_steps):
       # import code ; code.interact(local = locals())
       loss = loss / grad_accum_steps # normalizing the losses for all the microsteps
       loss_acum += loss.detach() # accumulating the loss for printing
+      # not using a sync context manager for sync here
+      if ddp:
+        # this is used to only sync the gradients at the last step of the ddp
+        if micro_step == grad_accum_steps - 1:
+          model.require_backward_grad_sync = True
+        else:
+           model.require_backward_grad_sync = False
+           
       loss.backward()
+    # avg the loss across all processes
+    if ddp:
+       dist.all_reduce(loss_acum, op = dist.ReduceOp.AVG)
     # clip the gradients to norm 
     norm = torch.nn.utils.clip_grad_norm(model.parameters(), 1.0) # normalising for not shocking the model in terms of the gradient movement, this can be caused by bad data batches
     lr = learning_rate_scheduler(step)
@@ -124,11 +139,15 @@ for step in range(max_steps):
     torch.cuda.synchronize()
     t1 = time.time()
     dt = (t1-t0) * 1000
-    token_processed = train_loader.B * train_loader.T * grad_accum_steps 
+    token_processed = train_loader.B * train_loader.T * grad_accum_steps  * ddp_world_size
     tokens_per_second = token_processed / (t1-t0)
-    print(f"Step {step} | Loss {loss_acum.item()}, | time : {dt:.2f}ms  | tokens/s: {tokens_per_second}")
+    if master_process:
+      print(f"Step {step} | Loss {loss_acum.item()}, | time : {dt:.2f}ms  | tokens/s: {tokens_per_second}")
 
 
+# kill processes
+if ddp:
+   destroy_process_group()
 
 
 print(f'this is the shape of the logits : {logits.shape}')
