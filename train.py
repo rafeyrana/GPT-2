@@ -1,18 +1,42 @@
-from model import DataLoader, GPT, ModelConf
+from model import DataLoaderDDP, GPT, ModelConf
 import time
+import os
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import math
+from torch.distributed import init_process_group, destroy_process_group
 
 
-device = "cpu"
-if torch.cuda.is_available():
-    device = "cuda"
-elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-    device = "mps"
 
-print("Using device: ", device)
+# setting up distributed data parallel training
+
+# torchrun command will now set upu the env variables Rank, Local_rank and world_size
+ddp = int(os.environ.get('RANK', -1)) != -1 # check if we ae running in distributed mode
+
+if ddp:
+    assert torch.cuda.is_available(), "LMAO youre GPU poor"
+    init_process_group(backend="nccl")
+    ddp_rank = int(os.environ["RANK"])
+    ddp_local_rank = int(os.environ["LOCAL_RANK"])
+    ddp_world_size = int(os.environ["WORLD_SIZE"])
+    device = f"cuda:{ddp_local_rank}"
+    torch.cuda.set_device(device)
+    master_process = ddp_rank == 0  # Main Process : This process will do logging, checkpointing, etc.
+else:
+    # Poor people shit bro
+    ddp_rank = 0
+    ddp_local_rank = 0
+    ddp_world_size = 1
+    master_process = True
+
+    device = "cpu"
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = "mps"
+
+    print("Using device: ", device)
 
 # for resulability
 torch.manual_seed(1337)
@@ -24,18 +48,19 @@ total_batch_size = 524288
 B = 4 # this is the microbatch size now
 T = 32
 assert total_batch_size % (B * T) == 0, "make sure batch size is divisible by B and T "
-grad_accum_steps = total_batch_size // (B * T)
-print(f"total desired batch size : {total_batch_size}")
-print(f"calcaulated gradient accumumlation steps : {grad_accum_steps}")
+grad_accum_steps = total_batch_size // (B * T * ddp_world_size) # each process will do B* T 
+if master_process:
+  print(f"total desired batch size : {total_batch_size}")
+  print(f"calcaulated gradient accumumlation steps : {grad_accum_steps}")
 
 
-train_loader = DataLoader(B = B, T = T)
+train_loader = DataLoaderDDP(B = B, T = T, process_rank =ddp_rank, num_processes = ddp_world_size)
 # 4, 1024 was working with 10 seconds per step
 torch.set_float32_matmul_precision("high") # tensor float 32 TF32
 
 
 # automated mixed precision for faster training and reducing the precision of the tensor representation
-# adding this because torch.compile is not supoorted on mps devices
+# adding this because torch.compile is notl supoorted on mps devices
 import torch._dynamo
 torch._dynamo.config.suppress_errors = True
 # num_return_sequences = 5
