@@ -7,7 +7,6 @@ import inspect
 
 
 class SelfAttention(nn.Module):
-     
      def __init__(self, config):
           super().__init__()
           assert config.n_embedding % config.n_head == 0
@@ -39,7 +38,6 @@ class SelfAttention(nn.Module):
           #y = attention @ v
 
           y = F.scaled_dot_product_attention(q, k ,v,is_causal= True) # Flash attention
-
           # We will be making an optimisation on the way we calculate self attention by implementing Flash Attention as proposed in the paper : Flash Attention: FAst ANd Memory Efficient Exact Attneion with IO-Awareness
           # this is the kernel fusion algorithm which is 7.6% faster.
           y = y.transpose(1, 2).contiguous().view(batch_size, seq_length, embedding_dim) # reassembling the heads output / concatenation tbh
@@ -48,6 +46,7 @@ class SelfAttention(nn.Module):
           y = self.c_projection(y)
           return y
      
+
 class MLP(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -84,7 +83,6 @@ class ModelConf:
 
 
 class GPT(nn.Module):
-
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -96,12 +94,9 @@ class GPT(nn.Module):
             layer_normalisation = nn.LayerNorm(config.n_embedding),
         ))
         self.linear_head = nn.Linear(config.n_embedding, config.vocab_size, bias = False)
-
         # weight sharing scheme by keeping the input embedding matrix and the output matrix before the softmax layer. the intuition behind this is to share the context of similary context tokens as this is a recursive scheme.
         self.transformer.token_embeddings.weight = self.linear_head.weight # single tensor being used in the forward pass
         # if we take into consideration the amount of weight sharing this is the shape of (768,50257) which is 40 million params out of the total 124 mkaing this whole parameter sharing scheme on approx 30% of the whole model.
-        # this makes training efficient
-
         self.apply(self._init_weights)
 
     def _init_weights(self, module):
@@ -134,9 +129,6 @@ class GPT(nn.Module):
 
          return loss, logits
 
-
-
-
     def configure_optimizers(self, weight_decay, learning_rate, device_type):
         # start with all of the candidate parameters (that require grad)
         param_dict = {pn: p for pn, p in self.named_parameters()}
@@ -157,37 +149,6 @@ class GPT(nn.Module):
         optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=(0.9, 0.95), eps=1e-8, fused=use_fused)
         return optimizer
 
-
-
-class DataLoader:
-    def __init__(self, B, T):
-        self.B = B
-        self.T = T
-        enc = tiktoken.get_encoding("gpt2")
-        with open("input.txt","r") as f:
-            text = f.read()
-
-        tokens = enc.encode(text)
-        self.tokens = torch.tensor(tokens, dtype = torch.long)
-        print(f'loaded {len(self.tokens)} tokens')
-        print(f'1 epoch = {len(self.tokens) // (B * T)} batches')
-
-        self.current_position = 0
-
-    def get_batch(self):
-        buf = self.tokens[self.current_position: self.current_position + self.B * self.T + 1]
-        x = (buf[:-1]).view(self.B , self.T)
-        y = (buf[1:]).view(self.B , self.T)
-        self.current_position += self.B * self.T
-        # check for out of bounds error
-
-        if self.current_position + self.B * self.T + 1 > len(self.tokens):
-            self.current_position = 0
-
-        return x , y
-
-
-
 class DataLoaderDDP:
     def __init__(self, B, T, process_rank , num_processes):
         self.B = B
@@ -202,7 +163,6 @@ class DataLoaderDDP:
         self.tokens = torch.tensor(tokens, dtype = torch.long)
         print(f'loaded {len(self.tokens)} tokens')
         print(f'1 epoch = {len(self.tokens) // (B * T)} batches')
-
         self.current_position = self.B * self.T * self.process_rank
 
     def get_batch(self):
@@ -210,17 +170,7 @@ class DataLoaderDDP:
         x = (buf[:-1]).view(self.B , self.T)
         y = (buf[1:]).view(self.B , self.T)
         self.current_position += self.B * self.T * self.num_processes
-        # check for out of bounds error
-
         if self.current_position + self.B * self.T * self.num_processes + 1 > len(self.tokens):
             self.current_position = self.B * self.T * self.process_rank
 
         return x , y
-
-
-
-
-
-
-
-
