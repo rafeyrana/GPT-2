@@ -2,10 +2,10 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-import math
 import tiktoken
 import inspect
-import time 
+
+
 class SelfAttention(nn.Module):
      
      def __init__(self, config):
@@ -47,11 +47,7 @@ class SelfAttention(nn.Module):
           # projecting output
           y = self.c_projection(y)
           return y
-
-
-
-
-
+     
 class MLP(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -59,13 +55,9 @@ class MLP(nn.Module):
         self.gelu = nn.GELU(approximate="tanh") # the approximate version of tanh is used. Gelu is sort of like a tanh but instead of 0 at 0 it has a sort of curve at 0 to counter the dead neuron RELU problem.
         self.linear_2 = nn.Linear(4 * config.n_embedding, config.n_embedding)
         self.linear_2.GPT2_SCALE_INIT = 1.0
-
-
     def forward(self, x):
          return self.linear_2(self.gelu(self.linear_1(x)))
-
-
-
+    
 
 class Block(nn.Module):
     def __init__(self, config):
@@ -96,7 +88,6 @@ class GPT(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-
 
         self.transformer = nn.ModuleDict(dict(
             token_embeddings = nn.Embedding(config.vocab_size, config.n_embedding),

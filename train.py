@@ -1,16 +1,9 @@
 from model import DataLoader, GPT, ModelConf
 import time
-from dataclasses import dataclass
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import math
-import tiktoken
-import inspect
-
-
-
-
 
 
 device = "cpu"
@@ -26,11 +19,17 @@ torch.manual_seed(1337)
 if torch.cuda.is_available():
     torch.cuda.manual_seed(1337)
 
-
 # could have added the 0.5M total_batchsize to replicate the paper but we dont have enough hardware to implement gradient accumulation by using microbatches and not update the gradient just add them and keep for after all microbatches done
+total_batch_size = 524288
+B = 4 # this is the microbatch size now
+T = 32
+assert total_batch_size % (B * T) == 0, "make sure batch size is divisible by B and T "
+grad_accum_steps = total_batch_size // (B * T)
+print(f"total desired batch size : {total_batch_size}")
+print(f"calcaulated gradient accumumlation steps : {grad_accum_steps}")
 
 
-train_loader = DataLoader(B = 4, T = 32)
+train_loader = DataLoader(B = B, T = T)
 # 4, 1024 was working with 10 seconds per step
 torch.set_float32_matmul_precision("high") # tensor float 32 TF32
 
@@ -54,6 +53,7 @@ warmup_steps = 10
 max_steps = 50
 
 
+# we are going to implement cosine decay with warmup
 
 def learning_rate_scheduler(i):
   if i < warmup_steps:
@@ -75,19 +75,19 @@ optimizer = model.configure_optimizers(weight_decay = 0.1, learning_rate = 6e-4,
 for step in range(max_steps):
     t0 = time.time()
     optimizer.zero_grad()
-    x , y = train_loader.get_batch()
-    x, y = x.to(device) , y.to(device)
-    with torch.autocast(device_type = device, dtype = torch.bfloat16): # turn this on for cuda not suppported on mps
-        loss, logits = model(x, y)
-      # the 2 lines above cause this warning: WON'T CONVERT forward <ipython-input-3-e1e81a0fd956> line 112  due to: Traceback (most recent call last):File "/usr/local/lib/python3.10/dist-packages/torch/_dynamo/convert_frame.py", line 786, in _convert_frame
-      # use the simple one for it to be reomved but it trains anyway 
-    # loss, logits = model(x, y)
-
-
-    # import code ; code.interact(local = locals())
-
-
-    loss.backward()
+    loss_acum = 0
+    for micro_step in range(grad_accum_steps):
+      x , y = train_loader.get_batch()
+      x, y = x.to(device) , y.to(device)
+      with torch.autocast(device_type = device, dtype = torch.bfloat16): # turn this on for cuda not suppported on mps
+          loss, logits = model(x, y)
+        # the 2 lines above cause this warning: WON'T CONVERT forward <ipython-input-3-e1e81a0fd956> line 112  due to: Traceback (most recent call last):File "/usr/local/lib/python3.10/dist-packages/torch/_dynamo/convert_frame.py", line 786, in _convert_frame
+        # use the simple one for it to be reomved but it trains anyway 
+      # loss, logits = model(x, y) 
+      # import code ; code.interact(local = locals())
+      loss = loss / grad_accum_steps # normalizing the losses for all the microsteps
+      loss_acum += loss.detach() # accumulating the loss for printing
+      loss.backward()
     # clip the gradients to norm 
     norm = torch.nn.utils.clip_grad_norm(model.parameters(), 1.0) # normalising for not shocking the model in terms of the gradient movement, this can be caused by bad data batches
     lr = learning_rate_scheduler(step)
@@ -99,8 +99,9 @@ for step in range(max_steps):
     torch.cuda.synchronize()
     t1 = time.time()
     dt = (t1-t0) * 1000
-    tokens_per_second = (train_loader.B * train_loader.T) / (t1-t0)
-    print(f"Step {step} | Loss {loss.item()}, | time : {dt:.2f}ms  | tokens/s: {tokens_per_second}")
+    token_processed = train_loader.B * train_loader.T * grad_accum_steps 
+    tokens_per_second = token_processed / (t1-t0)
+    print(f"Step {step} | Loss {loss_acum.item()}, | time : {dt:.2f}ms  | tokens/s: {tokens_per_second}")
 
 
 
