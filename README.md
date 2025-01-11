@@ -1,7 +1,7 @@
 # GPT-2
 ## Recreating the GPT-2 Model (originally in TensorFlow) in PyTorch
 This implementation of GPT-2 in PyTorch is based on the original paper ["Language Models are Unsupervised Multitask Learners"](https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf) by Radford et al. (2019). The model is a decoder-only transformer architecture, which is different from the original transformer implementation proposed in the "Attention Is All You Need" Paper in 2017.
-
+<img width="1061" alt="image" src="https://github.com/user-attachments/assets/61b564e7-ec92-490f-9a80-62a37a0d8e81" />
 ## Optimizations and Technical Details
 
 ### Weight Sharing Scheme
@@ -26,6 +26,8 @@ The model uses a Cosine learning rate scheduler that warms up the learning rate 
 The model is trained using microbatch and DDP techniques on 8 GPUs in parallel with loss sync.
 
 Note: This implementation is for educational purposes only and may not achieve the same performance as the original GPT-2 model.
+
+
 
 ## Future Work and Improvements
 - Train on a larger dataset with more compute. (Dataset we can use is the LLM cleaned [Huggingface Fineweb 10B Token](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu) but i dont have the compute to train it :(  )
