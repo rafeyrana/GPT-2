@@ -22,9 +22,9 @@ WEIGHT_DECAY=0.01
 # The script uses torchrun for DDP if NPROC_PER_NODE > 1,
 # or runs directly if NPROC_PER_NODE is 1.
 
-CMD="python train.py"
-CMD+=" --dataset_path '$DATASET_PATH'"
-CMD+=" --dataset_type '$DATASET_TYPE'"
+CMD="python3 train.py"
+CMD+=" --dataset_path $DATASET_PATH"
+CMD+=" --dataset_type $DATASET_TYPE"
 CMD+=" --batch_size $BATCH_SIZE"
 CMD+=" --seq_len $SEQ_LEN"
 CMD+=" --max_steps $MAX_STEPS"

@@ -217,11 +217,12 @@ class AlpacaDataLoader:
             else:
                 formatted_text = f"Instruction: {instruction}\nOutput: {output}"
             # Add EOS token to signify end of a sequence pair for the model
-            formatted_texts.append(formatted_text + enc.eos_token)
+            # For GPT-2, the EOS token ID is 50256 (end-of-text token)
+            formatted_texts.append(formatted_text + "<|endoftext|>")
 
         tokens_list = []
         for text in formatted_texts:
-            tokens_list.extend(enc.encode(text))
+            tokens_list.extend(enc.encode(text, allowed_special={'<|endoftext|>'}))
 
         self.tokens = torch.tensor(tokens_list, dtype=torch.long)
 
