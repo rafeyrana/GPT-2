@@ -174,3 +174,124 @@ class DataLoaderDDP:
             self.current_position = self.B * self.T * self.process_rank
 
         return x , y
+
+import json
+
+class AlpacaDataLoader:
+    def __init__(self, B, T, process_rank, num_processes, dataset_path):
+        self.B = B
+        self.T = T
+        self.process_rank = process_rank
+        self.num_processes = num_processes
+        self.dataset_path = dataset_path
+
+        enc = tiktoken.get_encoding("gpt2")
+
+        self.data = []
+        try:
+            with open(self.dataset_path, 'r') as f:
+                # Attempt to load as JSONL first
+                for line in f:
+                    try:
+                        self.data.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        # If JSONL fails, reset and try to load as a single JSON array
+                        f.seek(0)
+                        self.data = json.load(f)
+                        break # Loaded as single JSON, no need to iterate lines further
+        except Exception as e:
+            print(f"Error loading or parsing dataset file: {self.dataset_path}. Error: {e}")
+            self.tokens = torch.tensor([], dtype=torch.long)
+            self.current_position = 0
+            self.start_idx = 0
+            self.end_idx = 0
+            return
+
+        formatted_texts = []
+        for item in self.data:
+            instruction = item.get('instruction', '')
+            output = item.get('output', '')
+            input_text = item.get('input', '') # Alpaca format often includes an 'input' field
+            if input_text:
+                formatted_text = f"Instruction: {instruction}\nInput: {input_text}\nOutput: {output}"
+            else:
+                formatted_text = f"Instruction: {instruction}\nOutput: {output}"
+            # Add EOS token to signify end of a sequence pair for the model
+            # For GPT-2, the EOS token ID is 50256 (end-of-text token)
+            formatted_texts.append(formatted_text + "<|endoftext|>")
+
+        tokens_list = []
+        for text in formatted_texts:
+            tokens_list.extend(enc.encode(text, allowed_special={'<|endoftext|>'}))
+
+        self.tokens = torch.tensor(tokens_list, dtype=torch.long)
+
+        if len(self.tokens) == 0:
+            print(f"No tokens loaded from {self.dataset_path}. Please check the dataset format and content.")
+            self.current_position = 0
+            self.start_idx = 0
+            self.end_idx = 0
+            return
+
+        print(f'loaded {len(self.tokens)} tokens from {self.dataset_path}')
+
+        # Distribute tokens among processes for DDP
+        # Each process gets a chunk of the total tokens
+        num_tokens_total = len(self.tokens)
+        tokens_per_process = num_tokens_total // self.num_processes
+        self.start_idx = self.process_rank * tokens_per_process
+        self.end_idx = (self.process_rank + 1) * tokens_per_process
+        if self.process_rank == self.num_processes - 1:
+            self.end_idx = num_tokens_total # Last process takes any remainder
+
+        self.current_position = self.start_idx
+        # Calculate effective tokens for this process
+        effective_tokens_this_process = self.end_idx - self.start_idx
+        if effective_tokens_this_process < B * T +1 and effective_tokens_this_process > 0:
+            print(f"Warning: Process {self.process_rank} has only {effective_tokens_this_process} tokens, which is less than B*T+1 = {B*T+1}. This process might not be able to produce full batches.")
+        elif effective_tokens_this_process == 0 and num_tokens_total > 0 : # Only print if there were tokens to begin with
+             print(f"Warning: Process {self.process_rank} has no tokens assigned. This might happen if the dataset is too small for the number of processes.")
+
+
+        if effective_tokens_this_process > 0 : # Only print if this process has tokens
+            print(f'Process {self.process_rank}: assigned tokens from {self.start_idx} to {self.end_idx} ({effective_tokens_this_process} tokens)')
+            # Corrected calculation for batches per epoch for this process
+            batches_this_process = effective_tokens_this_process // (B * T)
+            print(f'Process {self.process_rank}: 1 epoch = {batches_this_process} batches')
+        else:
+            print(f'Process {self.process_rank}: No tokens assigned.')
+
+    def get_batch(self):
+        # Check if this process has any tokens assigned at all or if tokens failed to load
+        if self.start_idx >= self.end_idx or len(self.tokens) == 0:
+            return None, None
+
+        required_tokens_for_batch = self.B * self.T + 1
+
+        if self.current_position + required_tokens_for_batch > self.end_idx:
+            self.current_position = self.start_idx # Reset for next epoch for this process
+
+        if self.current_position + required_tokens_for_batch > self.end_idx:
+            # Not enough tokens for a full batch even after reset (chunk too small for this process)
+            return None, None
+
+        buf = self.tokens[self.current_position : self.current_position + required_tokens_for_batch]
+
+        x = buf[:-1].view(self.B, self.T)
+        y = buf[1:].view(self.B, self.T)
+
+        self.current_position += self.B * self.T
+
+        return x, y
+
+# Ensure the new class is available for import if model.py is imported elsewhere.
+# (Assuming other classes like GPT, ModelConf etc. are defined above)
+# Check if __all__ is already defined, if so, append to it, otherwise create it.
+try:
+    # This will raise NameError if __all__ is not defined, which is fine.
+    if 'AlpacaDataLoader' not in __all__:
+        __all__.append('AlpacaDataLoader')
+except NameError:
+    # __all__ was not defined, so define it including all relevant classes from model.py
+    # Assuming these are the main classes to be exported. Adjust if others are needed.
+    __all__ = ['ModelConf', 'GPT', 'SelfAttention', 'MLP', 'Block', 'DataLoaderDDP', 'AlpacaDataLoader']
