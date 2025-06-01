@@ -27,7 +27,71 @@ The model is trained using microbatch and DDP techniques on 8 GPUs in parallel w
 
 Note: This implementation is for educational purposes only and may not achieve the same performance as the original GPT-2 model.
 
+## Training
 
+### Standard Text Training
+The model can be trained on a plain text file (default: `input.txt`). The `train.py` script handles the training process. You can configure various parameters like batch size, sequence length, learning rate, etc., directly in the script or via command-line arguments (see `python train.py --help`).
+
+To start training with the default settings (single GPU/CPU, using `input.txt`):
+```bash
+python train.py
+```
+
+For Distributed Data Parallel (DDP) training, use `torchrun`:
+```bash
+# Example for 2 GPUs on a single node
+torchrun --nproc_per_node=2 train.py
+```
+
+### Training with Conversational Datasets (Alpaca-style)
+
+This implementation now supports training with conversational datasets formatted in an Alpaca-like style. This is useful for fine-tuning the model for instruction-following or question-answering tasks.
+
+**Dataset Format:**
+
+The dataset should be a JSON or JSONL file. Each entry should be a JSON object containing at least an `"instruction"` and an `"output"` field. An optional `"input"` field can be included for additional context to the instruction.
+
+Example JSON entry:
+```json
+{
+    "instruction": "What is the capital of France?",
+    "input": "",
+    "output": "The capital of France is Paris."
+}
+```
+Or with additional input:
+```json
+{
+    "instruction": "Write a short story about a robot who learns to paint.",
+    "input": "The robot's name is Unit 734.",
+    "output": "Unit 734 had always processed logic, never art. One day, it found a discarded set of paints..."
+}
+```
+A sample file `alpaca_sample.json` is provided in the repository.
+
+**Training Command:**
+
+A convenience script `train_alpaca.sh` is provided to simplify training with Alpaca-style datasets. You can modify the configuration variables at the top of this script:
+
+-   `NPROC_PER_NODE`: Number of GPUs to use (set to 1 for CPU/single GPU).
+-   `DATASET_PATH`: Path to your Alpaca-style JSON/JSONL dataset (defaults to `alpaca_sample.json`).
+-   `BATCH_SIZE`, `SEQ_LEN`, `MAX_STEPS`, `WARMUP_STEPS`, `MAX_LR`, `WEIGHT_DECAY`: Training hyperparameters.
+
+To run the training using this script:
+```bash
+chmod +x train_alpaca.sh
+./train_alpaca.sh
+```
+
+Alternatively, you can run `train.py` directly and specify the dataset type and path:
+```bash
+# Example for single GPU/CPU using alpaca_sample.json
+python train.py --dataset_type alpaca --dataset_path alpaca_sample.json --batch_size 2 --seq_len 64 --max_steps 20
+
+# Example for DDP with 2 GPUs
+torchrun --nproc_per_node=2 train.py --dataset_type alpaca --dataset_path your_dataset.jsonl --batch_size <your_batch_size> --seq_len <your_seq_len>
+```
+Refer to `python train.py --help` for all available command-line options.
 
 ## Future Work and Improvements
 - Train on a larger dataset with more compute. (Dataset we can use is the LLM cleaned [Huggingface Fineweb 10B Token](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu) but i dont have the compute to train it :(  )
